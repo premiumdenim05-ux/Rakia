@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rakia Gestión</title>
+  <style>
+    #cloudGate{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:20px;background:#f4edda;color:#111;font:16px/1.45 system-ui,sans-serif}
+    #cloudGate[hidden]{display:none}
+    #cloudGate .panel{width:min(100%,420px);padding:24px;background:#fbf7ec;border:1px solid #d8cdb2;border-radius:12px;box-shadow:0 12px 40px #0002}
+    #cloudGate h1{font-size:1.4rem;margin:0 0 8px}
+    #cloudGate p{color:#585244}
+    #cloudGate label{display:block;margin:12px 0;color:#585244;font-size:.9rem}
+    #cloudGate input{display:block;width:100%;margin-top:5px;padding:11px;border:1px solid #d8cdb2;border-radius:8px;font:inherit;background:#f4edda;color:#111}
+    #cloudGate button{width:100%;margin-top:10px;padding:12px;border:1px solid #56661f;border-radius:8px;background:#56661f;color:white;font:inherit;font-weight:600}
+    #cloudGate button.secondary{background:transparent;color:#56661f}
+    #cloudMsg{min-height:1.4em;font-size:.9rem}
+  </style>
+</head>
+<body>
+  <section id="cloudGate" aria-label="Acceso a Rakia Gestión">
+    <form class="panel" id="cloudAuth">
+      <h1>Rakia Gestión</h1>
+      <p>Inicia sesión para acceder a los datos sincronizados de tu negocio.</p>
+      <label>Correo electrónico<input id="cloudEmail" type="email" autocomplete="username" required></label>
+      <label>Contraseña<input id="cloudPassword" type="password" autocomplete="current-password" minlength="6" required></label>
+      <button type="submit" data-mode="login">Iniciar sesión</button>
+      <button type="submit" class="secondary" data-mode="signup">Crear cuenta</button>
+      <p id="cloudMsg" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+  <div id="appLoader" style="padding:16px;font:16px system-ui,sans-serif">Cargando Rakia Gestión…</div>
+  <script>
+  (async function(){
+    const sourceUrl = './Rakia%20Gesti%C3%B3n%20(2).html';
+    const gate = document.getElementById('cloudGate');
+    const msg = document.getElementById('cloudMsg');
+    try {
+      const response = await fetch(sourceUrl, {cache:'no-store'});
+      if (!response.ok) throw new Error('No se encontró el archivo de la app en el repositorio.');
+      let html = await response.text();
+      const marker = '<script>\nconst K=';
+      if (!html.includes(marker)) throw new Error('No pude localizar el inicio del código de Rakia.');
+      const prelude = String.raw`
+const rakiaSupabase = window.supabase.createClient('https://sgsyaihtzljhyvyvaosj.supabase.co','sb_publishable_mOL_RaznRNbDB5egNghaRg_A5ELASOB');
+let rakiaUser=null, rakiaPayload={}, rakiaHasRow=false, rakiaWrite=Promise.resolve(), rakiaResolve, rakiaReject;
+const rakiaReady=new Promise((resolve,reject)=>{rakiaResolve=resolve;rakiaReject=reject});
+async function rakiaConnect(session){
+  rakiaUser=session.user;
+  const result=await rakiaSupabase.from('rakia_cloud').select('data').eq('user_id',rakiaUser.id).maybeSingle();
+  if(result.error)throw result.error;
+  rakiaHasRow=!!result.data;
+  if(rakiaHasRow)rakiaPayload=result.data.data||{};
+  else{
+    try{const local=JSON.parse(localStorage.getItem('bo_gestion_v1')||'{}');rakiaPayload=local&&typeof local==='object'?local:{}}catch(_){rakiaPayload={}}
+    const saved=await rakiaSupabase.from('rakia_cloud').upsert({user_id:rakiaUser.id,data:rakiaPayload,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+    if(saved.error)throw saved.error;
+    rakiaHasRow=true;
+  }
+  rakiaResolve(true);
+  setTimeout(()=>{const g=document.getElementById('cloudGate');if(g)g.hidden=true},700);
+}
+const rakiaAuthForm=document.getElementById('cloudAuth');
+rakiaAuthForm.addEventListener('submit',async function(event){
+  event.preventDefault();
+  const button=event.submitter, mode=button&&button.dataset.mode;
+  const email=document.getElementById('cloudEmail').value.trim();
+  const password=document.getElementById('cloudPassword').value;
+  msg.textContent=mode==='signup'?'Creando cuenta…':'Iniciando sesión…';
+  try{
+    if(mode==='signup'){
+      const result=await rakiaSupabase.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});
+      if(result.error)throw result.error;
+      if(result.data.session)await rakiaConnect(result.data.session);
+      else msg.textContent='Cuenta creada. Confirma el correo que te enviamos y después inicia sesión.';
+    }else{
+      const result=await rakiaSupabase.auth.signInWithPassword({email,password});
+      if(result.error)throw result.error;
+      await rakiaConnect(result.data.session);
+    }
+  }catch(error){msg.textContent='No se pudo acceder: '+(error.message||'revisa los datos y la configuración de Supabase');}
+});
+(async function(){
+  try{const result=await rakiaSupabase.auth.getSession();if(result.error)throw result.error;if(result.data.session)await rakiaConnect(result.data.session);}
+  catch(error){msg.textContent='No se pudo conectar con Supabase: '+(error.message||'error de conexión');}
+})();
+window.claude={use:async function(service){
+  if(service==='downloads')return{save:async function(file){const blob=new Blob([file.data],{type:'application/octet-stream'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=file.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}};
+  if(service!=='db')return null;
+  await rakiaReady;
+  return{doc:function(path){const key=path.split('/').pop();return{
+    onSnapshot:function(callback,onError){try{callback({exists:Object.prototype.hasOwnProperty.call(rakiaPayload,key),data:function(){return{list:rakiaPayload[key]||[]}}})}catch(error){if(onError)onError(error)}},
+    set:function(value){rakiaPayload[key]=Array.isArray(value.list)?value.list:[];rakiaWrite=rakiaWrite.then(async function(){const result=await rakiaSupabase.from('rakia_cloud').upsert({user_id:rakiaUser.id,data:rakiaPayload,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(result.error)throw result.error;rakiaHasRow=true});return rakiaWrite}
+  }}}
+}};
+`;
+      html = html.replace(marker, '<script>\n' + prelude + '\nconst K=');
+      html = html.replace('</body>', '<div id="cloudGate" hidden></div></body>');
+      // Keep the login UI in the loaded document and run its handlers there.
+      const gateMarkup = document.getElementById('cloudGate').outerHTML;
+      html = html.replace('<body>', '<body>\n' + gateMarkup);
+      // The loader's form handlers are installed here; re-install them after the app document is written.
+      const authBootstrap = String.raw`<script>
+      const gate=document.getElementById('cloudGate'),msg=document.getElementById('cloudMsg'),form=document.getElementById('cloudAuth');
+      form.addEventListener('submit',async function(event){event.preventDefault();const button=event.submitter,mode=button&&button.dataset.mode,email=document.getElementById('cloudEmail').value.trim(),password=document.getElementById('cloudPassword').value;msg.textContent=mode==='signup'?'Creando cuenta…':'Iniciando sesión…';try{if(mode==='signup'){const r=await rakiaSupabase.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});if(r.error)throw r.error;if(r.data.session)await rakiaConnect(r.data.session);else msg.textContent='Cuenta creada. Confirma el correo y después inicia sesión.'}else{const r=await rakiaSupabase.auth.signInWithPassword({email,password});if(r.error)throw r.error;await rakiaConnect(r.data.session)}}catch(e){msg.textContent='No se pudo acceder: '+(e.message||'error')}});
+      (async function(){try{const r=await rakiaSupabase.auth.getSession();if(r.error)throw r.error;if(r.data.session)await rakiaConnect(r.data.session)}catch(e){msg.textContent='No se pudo conectar: '+(e.message||'error')}})();
+      <\/script>`;
+      // Use the bootstrap in place of its placeholder; auth UI markup itself is preserved.
+      html = html.replace('<div id="cloudGate" hidden></div>', authBootstrap);
+      html = html.replace('<script>', '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script><script>', 1);
+      document.open(); document.write(html); document.close();
+    } catch (error) {
+      gate.hidden=false;
+      msg.textContent=error.message||'No se pudo cargar la app.';
+      document.getElementById('appLoader').textContent='No se pudo cargar Rakia Gestión. Revisa que el archivo HTML esté en la raíz del repositorio.';
+    }
+  })();
+  </script>
+</body>
+</html>
